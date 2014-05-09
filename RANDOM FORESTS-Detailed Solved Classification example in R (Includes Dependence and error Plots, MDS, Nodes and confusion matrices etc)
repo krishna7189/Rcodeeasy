@@ -1,0 +1,128 @@
+R Code  for RANDOM FOREST
+Data Set:- Bank Marketing 
+Source of Data Set:-  UCI Repository (http://archive.ics.uci.edu/ml/datasets/Bank+Marketing)
+The Code includes the following:-
+1. Data Exploration - Missing Values, Outliers
+2. Data Visualisation
+3.  Correlation Matrix
+4. Data Partitioning
+5. RANDOM FOREST - Detailed
+6. R Package- randomForest
+
+
+
+## The data has been imported using Import Dataset option in R Environment
+## The data set can be obtained from http://archive.ics.uci.edu/ml/datasets/Bank+Marketing
+## DATASET UNDERSTANDING
+head(bank_full) ## Displays first 6 rows for each variable
+str(bank_full) ## Describes each variables
+summary(bank_full) ## Provides basic statistical information of each variable
+## DATA EXPLORATION - Check for Missing Data
+## Option 1
+is.na(bank_full) ## Displays True for a missing value
+## Since it is a large dataset, graphical display of missing values will prove to be easier
+##Option 2
+require(Amelia)
+missmap(bank_full,main="Missing Data - Bank Subscription", col=c("red","grey"),legend=FALSE)
+## No red colour stripes are visible. hence no missing values.
+##Option 3
+summary(bank_full) ## displays missing values if any under every variable
+
+## DATA VISUALISATION
+## Use Box plots (Only for continuous variables)- To Check Ouliers
+boxplot(bank_full$age~bank_full$subscribed, main=" AGE",ylab="age of customers",xlab="Subscribed")
+boxplot(bank_full$balance~bank_full$subscribed, main=" BALANCE",ylab="Balance of customers",xlab="Subscribed")
+boxplot(bank_full$lastday~bank_full$subscribed, main=" LAST DAY",ylab="Last day of contact",xlab="Subscribed")
+boxplot(bank_full$lastduration~bank_full$subscribed, main="LAST DURATION",ylab="Last duration of contact",xlab="Subscribed")
+boxplot(bank_full$numcontacts~bank_full$subscribed, main="NUM CONTACTS",ylab="number of contacts",xlab="Subscribed")
+boxplot(bank_full$pdays~bank_full$subscribed, main=" Previous DAYS",ylab="Previous days of contact",xlab="Subscribed")
+boxplot(bank_full$pcontacts~bank_full$subscribed, main=" Previous Contacts",ylab="Previous Contacts with customers",xlab="Subscribed")
+## Though some outliers are observed in Previous contacts, NumContacts and LastDuration, they have not bee removed keeping their significance into consideration
+## Use Histograms (For both continuous and categorical variables)
+## These histograms provide details abpout Skewness, Normal Distribution etc
+## Function to create histograms for continuous variables with normal curve
+bank_Conthist<-function(VarName,NumBreaks,xlab,main,lengthxfit) ## xlab and main should be mentioned under quotes as they are characters
+{
+  hist(VarName,breaks=NumBreaks,col="yellow",xlab=xlab,main=main)
+  xfit<-seq(min(VarName),max(VarName),length=lengthxfit)
+  yfit<-dnorm(xfit,mean=mean(VarName),sd=sd(VarName))
+  yfit<-yfit*diff(h$mids[1:2])*length(VarName)
+  lines(xfit,yfit,col="red",lwd=3)
+}
+bank_Conthist(bank_full$age,10,"age of customers","AGE",30)
+bank_Conthist(bank_full$balance,50,"Balance of customers","Balance",100)
+## Balance is more skewed towards to Negative or Zero
+bank_Conthist(bank_full$lastday,5,"Last Day of contact","LAst Day",10)
+bank_Conthist(bank_full$lastduration,100,"LastDuration of COntact","Last Duration",10)
+## Last Duration is more skewed towards 0 to 100 secs.
+bank_Conthist(bank_full$numcontacts,30,"Number of Contacts","NUmContacts",20)
+## NUmContacts are more skewed towards 1
+bank_Conthist(bank_full$pdays,30,"Previous Days of contacts","PDays",20)
+## Many were not contacted previously
+bank_Conthist(bank_full$pcontacts,20,"Previous Contacts","PContacts",10)
+## Since many were not contacted previously, therefore Pcontacts is 0
+
+## Barplots for Categorical Variables
+barplot(table(bank_full$job),col="red",main="JOB")
+barplot(table(bank_full$marital),col="green",main="Marital")
+barplot(table(bank_full$education),col="red",main="Education")
+barplot(table(bank_full$creditdefault),col="red",main="Credit Default")
+## Since Credit Default is highly skewed towards NO, this shall be removed from further analysis
+bank_full[5]<-NULL
+str(bank_full)
+barplot(table(bank_full$housingloan),col="red",main="Housing Loan")
+barplot(table(bank_full$personalloan),col="blue",main="Personal Loan")
+barplot(table(bank_full$lastcommtype),col="red",main="Last communication type")
+barplot(table(bank_full$lastmonth),col="violet",main="Last Month")
+barplot(table(bank_full$poutcome),col="magenta",main="Previous Outcome")
+## Correlation Matrix among input (or independent) continuous variables
+bank_full.cont<-data.frame(bank_full$age,bank_full$balance,bank_full$lastday,bank_full$lastduration,bank_full$numcontacts,bank_full$pdays,bank_full$pcontacts)
+str(bank_full.cont)
+cor(bank_full.cont)
+## It can be observed that No two variables are highly correlated
+
+## Partitioning Data into Train and Test datasets in 70:30
+library(caret)
+set.seed(1234567)
+train1<-createDataPartition(bank_full$subscribed,p=0.7,list=FALSE)
+train<-bank_full[train1,]
+test<-bank_full[-train1,]
+## Without Any Transformations on the Variables, Random Forest Model has been Applied.
+ ## RANDOM FOREST FOR CLASSIFICATION
+library(randomForest)
+## Tune Random Forest to obtain optimal mtry (No. of independent or predictor variables to be sampled at each split) parameter
+tuneRF(train[,1:15],train$subscribed,stepFactor=2,improve=0.01,plot=TRUE,doBest=FALSE)
+## optimal mtry can be used while training the model, but this has been excluded for this dataset
+## Train data set for training the random forest model-- Ensure that your systme is equiped with higher memory space to run random forests
+train.RandomForest=randomForest(subscribed~.,data=train,ntree=500,proximity=TRUE,importance=TRUE)
+## Independent Variable Importance
+importance(train.RandomForest,type=1)
+## Independent Variable Importance Plot
+varImpPlot(train.RandomForest,sort=TRUE,type=1)
+## Independent or Predictor Variables actually used in the Random Forest model
+varUsed(train.RandomForest,by.tree=FALSE,count=TRUE)
+##size of tree in Random Forest
+a<-treesize(train.RandomForest,terminal=TRUE)
+hist(a)  ## Histogram to see the importance of each variable
+## To compute oulying measures or outliers based on proximity matrix
+b=outlier(train.RandomForest)
+## graphical plot of outlier
+plot(b,type='h',col=c("red","blue")[as.numeric(train$subscribed)])
+## MultiDimensional scaling plot for trained model
+MDSplot(train.RandomForest,train$subscribed,k=2,palette=rep(1,2),pch=as.numeric(train$subscribed))
+## Partial Dependence Plot to observe the marginal effect of a variable on the classification class probabilities
+## Lets observe the partial dependence of age on YES category class
+partialPlot(train.RandomForest,train,age,"yes")
+## Predict on the TEST data using the trained Random Forest Model
+test.RandomForest=predict(train.RandomForest,test,predict.all=TRUE,proximity=TRUE,nodes=TRUE)
+## Table showing the actual subscribed as per data and predicted subscribed by the trained model
+table(observed=test$subscribed,predicted=test.RandomForest)
+##Nodes Matrix
+str(attr(test.RandomForest,"nodes"))
+## confusion Matrix
+table(test.RandomForest,test$subscribed)
+## Plot margin of predictions on test dataset--- Here, positive margin means correct classification
+margin(test.RandomForest)
+plot(margin(test.RandomForest,sort=TRUE))
+## Plot error rates or MSE(mean square error) for test dataset
+plot(test.RandomForest,type=1)
