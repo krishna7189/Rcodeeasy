@@ -1,0 +1,263 @@
+## Import the Data scraped from Analytics Vidya blog using Import.IO
+## AVTM is the Final Generated Data Set
+
+##Import All Libraries
+library(tm)
+library(SnowballC)
+
+AVTM<-Final_AV_Complete
+
+##Select column from where Text needs to be Extracted
+pos.title<-character(0)
+pos.text<-character(0)
+pos.tags<-character(0)
+pos.comments<-character(0)
+pos.categories<-character(0)
+pos.title<-AVTM$Title
+pos.text<-AVTM$Text
+pos.tags<-AVTM$Tags
+pos.comments<-AVTM$Comments
+pos.categories<-AVTM$Categories
+
+##Create Corpus as reqd by TM package
+##Corpus requires a vector source
+library(tm)
+library(SnowballC)
+pos.corpus.title<-Corpus(VectorSource(pos.title))
+pos.corpus.text<-Corpus(VectorSource(pos.text))
+pos.corpus.tags<-Corpus(VectorSource(pos.tags))
+pos.corpus.comments<-Corpus(VectorSource(pos.comments))
+pos.corpus.categories<-Corpus(VectorSource(pos.categories))
+
+inspect(pos.corpus.title) ##Similarly other corpuses can be inspected
+
+##Lets Do some pre processing
+##Removing words from Comments which have higher correlation to Output Classification
+ExtraStopWords<-c(stopwords("english"),"Kunal","Jain","Tavish","Srivastava","Tags")
+
+Pos.corpus.Preprocess=function(corpus)
+{
+  corpus<-tm_map(corpus,stripWhitespace) ##Remove extra white spaces
+  corpus<-tm_map(corpus,removePunctuation)  ## Remove Punctuations
+  corpus<-tm_map(corpus,removeNumbers)  ## Remove Numbers
+  corpus<-tm_map(corpus,removeWords,ExtraStopWords)   ## Remove Stop Words
+  corpus<-tm_map(corpus,tolower) ## Converts to Lower case
+  corpus<-tm_map(corpus, stemDocument, language = "english")
+    return(corpus)
+}
+
+pos.corpus.title<-Pos.corpus.Preprocess(pos.corpus.title)
+pos.corpus.text<-Pos.corpus.Preprocess(pos.corpus.text)
+pos.corpus.tags<-Pos.corpus.Preprocess(pos.corpus.tags)
+pos.corpus.comments<-Pos.corpus.Preprocess(pos.corpus.comments)
+pos.corpus.categories<-Pos.corpus.Preprocess(pos.corpus.categories)
+  
+##Generate a Document Term Matrix, Train Dataset and Test Dataset
+##Input the sparse for Title, Test, Tags, Comments and Categories accordingly such that Accuracy can be enhanced 
+
+Pos.DTM<-function(sparseTitle,sparseText,sparseTags,sparseComments,sparseCategories)
+{
+pos.DTM.title<-removeSparseTerms(DocumentTermMatrix(pos.corpus.title),sparseTitle)
+(pos.DTM.title)
+pos.DTM.text<-removeSparseTerms(DocumentTermMatrix(pos.corpus.text),sparseText)
+(pos.DTM.text)
+pos.DTM.tags<-removeSparseTerms(DocumentTermMatrix(pos.corpus.tags),sparseTags)
+(pos.DTM.tags)
+pos.DTM.comments<-removeSparseTerms(DocumentTermMatrix(pos.corpus.comments),sparseComments)
+(pos.DTM.comments)
+pos.DTM.categories<-removeSparseTerms(DocumentTermMatrix(pos.corpus.categories),sparseCategories)
+(pos.DTM.categories)
+
+Final_DTM<-cbind(inspect(pos.DTM.title),inspect(pos.DTM.text),inspect(pos.DTM.tags),inspect(pos.DTM.categories),inspect(pos.DTM.comments))
+nrow(Final_DTM)
+ncol(Final_DTM)
+
+AVTM_Rem<-AVTM[,c(1,3,4,5,10,11,12)]
+AVTM_matrix<-as.matrix(AVTM_Rem)
+
+Final_AVTM<-cbind(Final_DTM,AVTM_matrix)  ## Matrix form
+Final_AVTM_Df<-as.data.frame(Final_AVTM)   ##DataFrame form
+
+##Upon Running the above as.data.frame, The parameters such as Month, Date and Year transforms themselves into Factors
+##Converting them back to Numeric
+Final_AVTM_Df$Month<-as.numeric(levels(Final_AVTM_Df$Month)[Final_AVTM_Df$Month])
+Final_AVTM_Df$Date<-as.numeric(levels(Final_AVTM_Df$Date)[Final_AVTM_Df$Date])
+Final_AVTM_Df$Year<-as.numeric(levels(Final_AVTM_Df$Year)[Final_AVTM_Df$Year])
+##Ensuring Date Format
+Final_AVTM_Df$CompDate<-as.Date(as.character(Final_AVTM_Df$CompDate),format="%d/%m/%Y")
+
+return(Final_AVTM_Df)
+}
+
+##Generate Final Dataframe for Analysis. Sprase will change with every model for better accuracy
+Final_AVTM_Df<-Pos.DTM(0.8,0.5,0.4,0.5,0.8)
+
+## Partition the Data into Train and Test Dataset
+##Train : Articles Published On and Before 6th July 2014
+##Test : Articles Published after 6th July 2014
+Train_AVTM<-subset(Final_AVTM_Df,CompDate<="2014-07-06")
+Test_AVTM<-subset(Final_AVTM_Df,CompDate>"2014-07-06")
+
+##Remove Date from Analysis
+Train_AVTM<-Train_AVTM[,-which(colnames(Train_AVTM)=="CompDate")]
+Test_AVTM<-Test_AVTM[,-which(colnames(Test_AVTM)=="CompDate")]
+
+##Lets Start Classification Modelling
+
+######################## 1. C5.0 Decision Tree   ################################
+ 
+library(C50)
+
+## Control for C5.0 Model
+C5.0Control(subset=TRUE,bands=2,winnow=TRUE,noGlobalPruning=FALSE,CF=0.25,minCases=2,label="C5.0 Outcome")## Train Model using C5.0
+
+##Train the Data
+train.c50=C5.0(Train_AVTM[,-which(colnames(Test_AVTM)=="Author")],Train_AVTM$Author,trials=10,rules=FALSE,control=C5.0Control(),costs=NULL)
+     ## Variable Importance Measure
+C5imp(train.c50,metric="usage",pct=TRUE)## Lower % Usage variables can be dicarded and the Train function is re-run to get better accuracy
+summary(train.c50) ## Check the percentage of accuracy of the model## Predict on the TEST data using trained Model
+     ##Retraining Using higher Overall % Variables
+Retrain.c50=C5.0(Train_AVTM[,c("articl","googl","note","number")],Train_AVTM$Author,trials=10,rules=FALSE,control=C5.0Control(),costs=NULL)
+
+##Prediction on Test Data and Train Data
+testPred.c50=predict(object=Retrain.c50,newdata=Test_AVTM[,c("articl","googl","note","number")],trials=1,type="class")
+trainPred.c50<-predict(Retrain.c50,Train_AVTM[,c("articl","googl","note","number")],trials=1,type="class")
+
+##Misclassification Matrix
+MisClassTest<-table("Predict"=test.c50,"Actual"=Test_AVTM$Author)  ## Test Data Prediction
+MisClassTrain<-table("Predict"=trainPred.c50,"Actual"=Train_AVTM$Author)   ## Train Data Prediction
+  
+##Accuracy based on Acceptance criteria
+accuracyC50<-(100-mean(c((nrow(Test_AVTM)-sum(diag(MisClassTest)))/nrow(Test_AVTM)),(nrow(Train_AVTM)-sum(diag(MisClassTrain)))/nrow(Train_AVTM)))
+accuracyC50
+
+
+######################## 2. CART Model   ################################
+
+library(rpart)
+## Various parameters that control resursive partioning and regressive trees
+control<-rpart.control(minsplit=30,minbucket=10,cp=0.01,maxcomplete=6,maxsurrogate=8,usersurrogate=2,xval=15,surrogatestyle=0,maxdepth=15)
+## generally minimum no. of observations in any terminal leaf node(minbucket)=minimum no. of observations that must exist in a node in order to split (minsplit)/3
+
+##Training the model
+train.rpart<-rpart(Author~.,data=Train_AVTM,control=control)
+
+##Prints the rpart object
+print(train.rpart) 
+
+##Summarizes the model
+summary(train.rpart,digits=getOption("digits"),cp=0,save="train.rpart")
+
+##Plot the rpart object
+plot(train.rpart,uniform=FALSE,branch=1,compress=TRUE,margin=0)
+
+##Label the plot drawn above (TREE Dendogram)
+text(train.rpart,splits=TRUE,use.n=TRUE)
+
+##PostScript Presentation Plot
+post(train.rpart,file="",title="Analytics Vidya Text mining-RPART",use.n=TRUE)
+
+##Snip-Contains the nodes that remain after selected subtrees are snipped off
+train.rpart.snip<-snip.rpart(train.rpart,toss=5)  ## trim subtree at node=5
+plot(train.rpart.snip)
+text(train.rpart.snip,splits=TRUE,use.n=TRUE)
+post(train.rpart.snip,file="",title="Analytics Vidya Text mining-RPART",use.n=TRUE)
+
+## Prediction on TEST and Train data set using Trained model
+## Factors - Predicted
+testpred.rpart.factor<-predict(train.rpart,Test_AVTM,type="class")
+trainpred.rpart.factor<-predict(train.rpart,Train_AVTM,type="class")
+
+##Misclassification Matrix
+MisClassTest<-table("Predict"=testpred.rpart.factor,"Actual"=Test_AVTM$Author)  ## Test Data Prediction
+MisClassTrain<-table("Predict"=trainpred.rpart.factor,"Actual"=Train_AVTM$Author)   ## Train Data Prediction
+
+##Accuracy based on Acceptance criteria
+accuracyCART<-(100-mean(c((nrow(Test_AVTM)-sum(diag(MisClassTest)))/nrow(Test_AVTM)),(nrow(Train_AVTM)-sum(diag(MisClassTrain)))/nrow(Train_AVTM)))
+accuracyCART
+
+
+######################## 3. Conditional Inference Trees   ################################
+
+library(party)
+
+##Train the Dataset
+Train.ctree<-ctree(Author~.,data=Train_AVTM,controls = ctree_control(maxsurrogate = 2))
+plot(Train.ctree)
+
+##Prediction on TEST and Train data set using Trained model
+TestPred.ctree<-predict(Train.ctree,Test_AVTM)
+TrainPred.ctree<-predict(Train.ctree,Train_AVTM)
+
+##Misclassification Matrix
+MisClassTest<-table("Predict"=TestPred.ctree,"Actual"=Test_AVTM$Author)  ## Test Data Prediction
+MisClassTrain<-table("Predict"=TrainPred.ctree,"Actual"=Train_AVTM$Author)   ## Train Data Prediction
+
+##Accuracy based on Acceptance criteria
+accuracyCtree<-(100-mean(c((nrow(Test_AVTM)-sum(diag(MisClassTest)))/nrow(Test_AVTM)),(nrow(Train_AVTM)-sum(diag(MisClassTrain)))/nrow(Train_AVTM)))
+accuracyCtree
+
+######################## 4. Weighted K Nearest Neighbour   ################################
+
+
+library(kknn)
+
+##Train the Dataset
+AVTM.kknn<-train.kknn(Author~.,Train_AVTM,distance=5,kernel = c("triangular","gaussian","epanechnikov", "optimal"),kmax=9)
+summary(AVTM.kknn)
+
+##Prediction on TEST and Train data set using Trained model
+testPred.kknn<-predict(AVTM.kknn,Test_AVTM)
+trainPred.kknn<-predict(AVTM.kknn,Train_AVTM)
+
+##Misclassification Matrix
+MisClassTest<-table("Predict"=testPred.kknn,"Actual"=Test_AVTM$Author)  ## Test Data Prediction
+MisClassTrain<-table("Predict"=trainPred.kknn,"Actual"=Train_AVTM$Author)   ## Train Data Prediction
+
+##Accuracy based on Acceptance criteria
+accuracykknn<-(100-mean(c((nrow(Test_AVTM)-sum(diag(MisClassTest)))/nrow(Test_AVTM)),(nrow(Train_AVTM)-sum(diag(MisClassTrain)))/nrow(Train_AVTM)))
+accuracyCkknn
+
+
+######################## 5. K Nearest Neighbour   ################################
+
+
+library(class)
+
+##Train the Dataset
+Train_AVTM_M<-data.matrix(Train_AVTM[,-which(colnames(Train_AVTM)=="Author")])
+
+##Prediction on TEST and Train data set using Trained model
+Test_AVTM_Mat<-data.matrix(Test_AVTM[,-which(colnames(Test_AVTM)=="Author")])
+Train_AVTM_Mat<-data.matrix(Train_AVTM[,-which(colnames(Train_AVTM)=="Author")])
+
+TestPred.knn<-knn(Train_AVTM_M,Test_AVTM_Mat,(Train_AVTM$Author))
+TrainPred.knn<-knn(Train_AVTM_M,Train_AVTM_Mat,(Train_AVTM$Author))
+
+##Misclassification Matrix
+MisClassTest<-table("Predict"=TestPred.knn,"Actual"=Test_AVTM$Author)  ## Test Data Prediction
+MisClassTrain<-table("Predict"=TrainPred.knn,"Actual"=Train_AVTM$Author)   ## Train Data Prediction
+
+##Accuracy based on Acceptance criteria
+accuracyknn<-(100-mean(c((nrow(Test_AVTM)-sum(diag(MisClassTest)))/nrow(Test_AVTM)),(nrow(Train_AVTM)-sum(diag(MisClassTrain)))/nrow(Train_AVTM)))
+accuracyknn
+
+
+######################## 6. Random Forest Ensembles   ################################
+
+##Train the Dataset
+Train.RandomForestEnsemble<-cforest(Author~.,data=Train_AVTM,control=cforest_unbiased(ntree=4))
+
+##Predict on Test Data and Train Data
+TestPred.RandomForestEnsemble<-predict(Train.RandomForestEnsemble,Test_AVTM,OOB=TRUE)
+TrainPred.RandomForestEnsemble<-predict(Train.RandomForestEnsemble,Train_AVTM,OOB=TRUE)
+
+##Misclassification Matrix
+MisClassTest<-table("Predict"=TestPred.RandomForestEnsemble,"Actual"=Test_AVTM$Author)  
+MisClassTrain<-table("Predict"=TrainPred.RandomForestEnsemble,"Actual"=Train_AVTM$Author)   
+
+##Accuracy based on Acceptance criteria
+accuracyRF<-(100-mean(c((nrow(Test_AVTM)-sum(diag(MisClassTest)))/nrow(Test_AVTM)),(nrow(Train_AVTM)-sum(diag(MisClassTrain)))/nrow(Train_AVTM)))
+accuracyRF
+
+
