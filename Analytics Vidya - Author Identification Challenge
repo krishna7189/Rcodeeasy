@@ -66,7 +66,9 @@ pos.DTM.comments<-removeSparseTerms(DocumentTermMatrix(pos.corpus.comments),spar
 (pos.DTM.comments)
 pos.DTM.categories<-removeSparseTerms(DocumentTermMatrix(pos.corpus.categories),sparseCategories)
 (pos.DTM.categories)
+}
 
+##Now Generate Document Term Matrix
 Final_DTM<-cbind(inspect(pos.DTM.title),inspect(pos.DTM.text),inspect(pos.DTM.tags),inspect(pos.DTM.categories),inspect(pos.DTM.comments))
 nrow(Final_DTM)
 ncol(Final_DTM)
