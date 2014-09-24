@@ -22,8 +22,6 @@ pos.categories<-AVTM$Categories
 
 ##Create Corpus as reqd by TM package
 ##Corpus requires a vector source
-library(tm)
-library(SnowballC)
 pos.corpus.title<-Corpus(VectorSource(pos.title))
 pos.corpus.text<-Corpus(VectorSource(pos.text))
 pos.corpus.tags<-Corpus(VectorSource(pos.tags))
