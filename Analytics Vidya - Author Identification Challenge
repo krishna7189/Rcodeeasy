@@ -6,7 +6,7 @@
 library(tm)
 library(SnowballC)
 
-AVTM<-Final_AV_Complete
+AVTM<-read.table("pathname\AVTM.csv",sep=",",stringsAsFactors=FALSE)
 
 ##Select column from where Text needs to be Extracted
 pos.title<-character(0)
